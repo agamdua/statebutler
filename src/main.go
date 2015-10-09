@@ -19,16 +19,53 @@ const (
 	CONN_HOST       = ""
 	CONN_PORT       = "3333"
 	CONN_TYPE       = "tcp"
-	LOGIC_CONN_HOST = ""
+	LOGIC_CONN_HOST = "" // TODO: fill in
 	LOGIC_CONN_PORT = "5000"
 	LOGIC_CONN_Type = CONN_TYPE
 )
 
-type GameState struct {
-	UserID   int // TODO: generate UUID and send back to user
+type PlayerAction struct {
+	Username string
+	UserID   string // TODO: generate UUID and send back to user
 	GameTick int
-	Action   int
-	Data     string
+	Actions  string
+	Stale    bool
+}
+
+type GameState struct {
+	GameTick int // TODO: needs to be a FK
+	State    string
+}
+
+// map json from player to logicserver
+func mapPlayerToGlobal(db gorm.DB) *gabs.Container {
+	// TODO: IMPORTANT THIS RELIES ON GAME TICK LOGIC
+	var player_actions []PlayerAction
+
+	// fetch all active entries to memory
+	// ordering by game tick so only recent ones are taken
+	db.Where("Stale = ?", false).Order("GameTick").Find(&player_actions)
+
+	// update all the entries as stale in a batch
+	// TODO: ideally the above two should be in a transaction
+	db.Table("player_action").Where("Stale = ?", false).Updates(PlayerAction{Stale: true})
+
+	jsonObj := gabs.New()
+
+	// ref: https://github.com/Jeffail/gabs#generating-json
+	for _, player_state := range player_actions {
+		jsonObj.Set(player_state.Actions, player_state.Username, "Actions")
+		jsonObj.Set(player_state.GameTick, player_state.Username, "GameTick")
+	}
+
+	return jsonObj
+}
+
+func savePlayerAction(jsonObj gabs.Container, db gorm.DB) bool {
+	// parse message from player and dump in db
+	// TODO: what is th equivalent of `for key in dict.keys()` ??
+	// TODO: once I figure that out I need to save this in PlayerAction model
+	return true
 }
 
 func main() {
@@ -52,11 +89,11 @@ func main() {
 		println("Dial failed")
 		os.Exit(1)
 	}
-	logic_conn, err := net.DialTCP("tcp", nil, logic_server)
+	logicConn, err := net.DialTCP("tcp", nil, logic_server)
 
 	// event loop
 	for {
-		// Listen for an incoming connection.
+		// TODO: we need to maintain game ticks here
 		conn, err := l.Accept()
 		if err != nil {
 			fmt.Println("Error accepting: ", err.Error())
@@ -67,12 +104,12 @@ func main() {
 		fmt.Printf("Received message %s -> %s \n", conn.RemoteAddr(), conn.LocalAddr())
 
 		// Handle connections in a new goroutine.
-		go handleRequest(conn, logic_conn)
+		go handleRequest(conn, logicConn, db)
 	}
 }
 
 // Handles incoming requests.
-func handleRequest(conn net.Conn, logicConn net.Conn) {
+func handleRequest(conn net.Conn, logicConn net.Conn, db gorm.DB) {
 
 	// Make a buffer to hold incoming data.
 	buf := make([]byte, 1024)
@@ -86,9 +123,21 @@ func handleRequest(conn net.Conn, logicConn net.Conn) {
 
 	n := bytes.Index(buf, []byte{0})
 
-	// getting the json! up yours, rust
+	// getting the json! up yours, rust.
 	jsonParsed, err := gabs.ParseJSON(buf[:n-1])
 	println("This is a message: " + jsonParsed.String())
+
+	// save in db
+	savePlayerAction(*jsonParsed, db)
+
+	// write to logic server
+	// TODO: check if that will communicate over sockets
+	// TODO: can this be its goroutine?
+	_, err = logicConn.Write([]byte(jsonParsed.String()))
+	if err != nil {
+		println("Write to server failed: ", err.Error())
+		os.Exit(1)
+	}
 
 	conn.Close()
 }
