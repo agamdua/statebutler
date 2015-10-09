@@ -61,9 +61,15 @@ func savePlayerAction(jsonObj gabs.Container, db gorm.DB) bool {
 	println("saving player action")
 	username := jsonObj.Path("Username").Data().(string)
 	userID := username
-	actions := jsonObj.Path("Actions").Data().(string)
+	_actions, _ := jsonObj.Search("Actions").Children()
 
-	playerAction := PlayerAction{Username: username, UserID: userID, Actions: actions, Stale: false}
+	message := ""
+	for _, child := range _actions {
+		message += child.Data().(string) + ", "
+	}
+	println("Actions: ", message)
+
+	playerAction := PlayerAction{Username: username, UserID: userID, Actions: message, Stale: false}
 
 	return db.NewRecord(&playerAction)
 }
@@ -132,12 +138,9 @@ func handleRequest(conn net.Conn, logicConn net.Conn, db gorm.DB) {
 	println("game state shit")
 	// get last game state
 
-	// TODO: kirt -- dunno
-	gameState := GameState{}
-	var lastGameState []byte
-	db.Model(&GameState{}).Last(&gameState).Pluck("state", &lastGameState)
-	// send last game state to client (singular)
-	conn.Write([]byte(lastGameState))
+	// TODO: (kirt) get last game state
+
+	conn.Write([]byte("hello"))
 
 	conn.Close()
 }
@@ -147,5 +150,5 @@ func sendGameStateToServer(logicConn net.Conn, db gorm.DB) {
 
 	data := mapPlayerToGlobal(db)
 	println(data)
-	// TODO: kirt -- dunno
+	// TODO: (kirt) dump data in db
 }
