@@ -34,21 +34,18 @@ type PlayerAction struct {
 }
 
 type GameState struct {
-	GameTick int // TODO: needs to be a FK
-	State    string
+	State string
 }
 
 // map json from player to logicserver
 func mapPlayerToGlobal(db gorm.DB) *gabs.Container {
-	// TODO: IMPORTANT THIS RELIES ON GAME TICK LOGIC
 	var player_actions []PlayerAction
 
 	// fetch all active entries to memory
-	// ordering by game tick so only recent ones are taken
-	db.Where("Stale = ?", false).Order("GameTick").Find(&player_actions)
-
+	db.Where("Stale = ?", false).Find(&player_actions)
 	// update all the entries as stale in a batch
-	// TODO: ideally the above two should be in a transaction
+	// TODO: this is stupid, I might lost a player action if something happens
+	// I really need to update just the ones which I have got back
 	db.Table("player_action").Where("Stale = ?", false).Updates(PlayerAction{Stale: true})
 
 	jsonObj := gabs.New()
@@ -129,17 +126,16 @@ func handleRequest(conn net.Conn, logicConn net.Conn, db gorm.DB) {
 
 	if conn.RemoteAddr() == logicConn.RemoteAddr() {
 		// TODO: save game state in game state table
-
 		return // can get out of this function now
 	}
 	// save in db
-	// TODO: function is incomplete
 	savePlayerAction(*jsonParsed, db)
 
 	go sendGameStateToServer(logicConn, db)
 
 	// get last game state
-	lastGameState := db.Table("game_state").Last(&gameState)
+	gameState := GameState{}
+	lastGameState := db.Last(&gameState)
 	// send last game state to clients
 	conn.Write([]byte(lastGameState))
 }
@@ -148,6 +144,5 @@ func sendGameStateToServer(logicConn net.Conn, db gorm.DB) {
 	time.Sleep(time.Millisecond * 1500)
 
 	data := mapPlayerToGlobal(db)
-
 	logicConn.Write([]byte(data.String()))
 }
