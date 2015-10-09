@@ -8,6 +8,7 @@ import (
 	"net"
 	"os"
 	"time"
+	"encoding/json"
 )
 
 import (
@@ -136,12 +137,15 @@ func handleRequest(conn net.Conn, logicConn net.Conn, db gorm.DB) {
 	// go sendGameStateToServer(logicConn, db)
 
 	println("game state shit")
-
+	
 	// get the gamestate
 	lastgs := GameState{}
 	db.Last(&lastgs)
-
-	conn.Write([]byte("hello"))
+	
+	json_data := make(map[string]string)
+	json_data["game_state"] = lastgs.State
+	var data, _ = json.Marshal(json_data)
+	conn.Write(data)
 
 	conn.Close()
 }
