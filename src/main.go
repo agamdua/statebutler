@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"time"
 )
 
 import (
@@ -71,6 +72,7 @@ func savePlayerAction(jsonObj gabs.Container, db gorm.DB) bool {
 func main() {
 	// set up database
 	db, err := gorm.Open("sqlite3", "/tmp/gorm.db")
+	db.CreateTable(&PlayerAction{})
 	db.CreateTable(&GameState{})
 
 	// Listen for incoming connections.
@@ -93,14 +95,13 @@ func main() {
 
 	// event loop
 	for {
-		// TODO: we need to maintain game ticks here
 		conn, err := l.Accept()
 		if err != nil {
 			fmt.Println("Error accepting: ", err.Error())
 			os.Exit(1)
 		}
 
-		//logs an incoming message
+		// logs an incoming message
 		fmt.Printf("Received message %s -> %s \n", conn.RemoteAddr(), conn.LocalAddr())
 
 		// Handle connections in a new goroutine.
@@ -111,7 +112,6 @@ func main() {
 // Handles incoming requests.
 func handleRequest(conn net.Conn, logicConn net.Conn, db gorm.DB) {
 
-	// Make a buffer to hold incoming data.
 	buf := make([]byte, 1024)
 
 	// Read the incoming connection into the buffer.
@@ -127,17 +127,27 @@ func handleRequest(conn net.Conn, logicConn net.Conn, db gorm.DB) {
 	jsonParsed, err := gabs.ParseJSON(buf[:n-1])
 	println("This is a message: " + jsonParsed.String())
 
+	if conn.RemoteAddr() == logicConn.RemoteAddr() {
+		// TODO: save game state in game state table
+
+		return // can get out of this function now
+	}
 	// save in db
+	// TODO: function is incomplete
 	savePlayerAction(*jsonParsed, db)
 
-	// write to logic server
-	// TODO: check if that will communicate over sockets
-	// TODO: can this be its goroutine?
-	_, err = logicConn.Write([]byte(jsonParsed.String()))
-	if err != nil {
-		println("Write to server failed: ", err.Error())
-		os.Exit(1)
-	}
+	go sendGameStateToServer(logicConn, db)
 
-	conn.Close()
+	// get last game state
+	lastGameState := db.Table("game_state").Last(&gameState)
+	// send last game state to clients
+	conn.Write([]byte(lastGameState))
+}
+
+func sendGameStateToServer(logicConn net.Conn, db gorm.DB) {
+	time.Sleep(time.Millisecond * 1500)
+
+	data := mapPlayerToGlobal(db)
+
+	logicConn.Write([]byte(data.String()))
 }
