@@ -135,8 +135,10 @@ func handleRequest(conn net.Conn, logicConn net.Conn, db gorm.DB) {
 
 	// get last game state
 	gameState := GameState{}
-	lastGameState := db.Last(&gameState)
-	// send last game state to clients
+	// TODO: maybe I need to use this syntx: db.Model(&ModelName{})
+	var lastGameState []byte
+	db.Last(&gameState).Pluck("state", &lastGameState)
+	// send last game state to client (singular)
 	conn.Write([]byte(lastGameState))
 }
 
