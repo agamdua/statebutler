@@ -28,7 +28,6 @@ const (
 type PlayerAction struct {
 	Username string
 	UserID   string // TODO: generate UUID and send back to user
-	GameTick int
 	Actions  string
 	Stale    bool
 }
@@ -53,17 +52,20 @@ func mapPlayerToGlobal(db gorm.DB) *gabs.Container {
 	// ref: https://github.com/Jeffail/gabs#generating-json
 	for _, player_state := range player_actions {
 		jsonObj.Set(player_state.Actions, player_state.Username, "Actions")
-		jsonObj.Set(player_state.GameTick, player_state.Username, "GameTick")
 	}
 
 	return jsonObj
 }
 
 func savePlayerAction(jsonObj gabs.Container, db gorm.DB) bool {
-	// parse message from player and dump in db
-	// TODO: what is th equivalent of `for key in dict.keys()` ??
-	// TODO: once I figure that out I need to save this in PlayerAction model
-	return true
+	println("saving player action")
+	username := jsonObj.Path("Username").Data().(string)
+	userID := username
+	actions := jsonObj.Path("Actions").Data().(string)
+
+	playerAction := PlayerAction{Username: username, UserID: userID, Actions: actions, Stale: false}
+
+	return db.NewRecord(&playerAction)
 }
 
 func main() {
@@ -95,13 +97,7 @@ func main() {
 	// event loop
 	for {
 		println("accepting")
-		conn, err := l.Accept()
-		println("connected")
-		if err != nil {
-			fmt.Println("Error accepting: ", err.Error())
-			os.Exit(1)
-		}
-
+		conn, _ := l.Accept()
 		// logs an incoming message
 		fmt.Printf("Received message %s -> %s \n", conn.RemoteAddr(), conn.LocalAddr())
 
@@ -129,27 +125,27 @@ func handleRequest(conn net.Conn, logicConn net.Conn, db gorm.DB) {
 	jsonParsed, err := gabs.ParseJSON(buf[:n-1])
 	println("This is a message: " + jsonParsed.String())
 
-	if conn.RemoteAddr() == logicConn.RemoteAddr() {
-		// TODO: save game state in game state table
-		return // can get out of this function now
-	}
-	// save in db
 	savePlayerAction(*jsonParsed, db)
 
-	go sendGameStateToServer(logicConn, db)
+	// go sendGameStateToServer(logicConn, db)
 
+	println("game state shit")
 	// get last game state
+
+	// TODO: kirt -- dunno
 	gameState := GameState{}
-	// TODO: maybe I need to use this syntx: db.Model(&ModelName{})
 	var lastGameState []byte
-	db.Last(&gameState).Pluck("state", &lastGameState)
+	db.Model(&GameState{}).Last(&gameState).Pluck("state", &lastGameState)
 	// send last game state to client (singular)
 	conn.Write([]byte(lastGameState))
+
+	conn.Close()
 }
 
 func sendGameStateToServer(logicConn net.Conn, db gorm.DB) {
 	time.Sleep(time.Millisecond * 1500)
 
 	data := mapPlayerToGlobal(db)
-	logicConn.Write([]byte(data.String()))
+	println(data)
+	// TODO: kirt -- dunno
 }
