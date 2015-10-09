@@ -82,6 +82,7 @@ func main() {
 	defer l.Close()
 	fmt.Println("Listening on " + CONN_HOST + ":" + CONN_PORT)
 
+	println("logic 1")
 	// establishing connection to game logic server
 	logic_server, err := net.ResolveTCPAddr("tcp", LOGIC_CONN_HOST+":"+LOGIC_CONN_PORT)
 	if err != nil {
@@ -89,10 +90,13 @@ func main() {
 		os.Exit(1)
 	}
 	logicConn, err := net.DialTCP("tcp", nil, logic_server)
+	println("logic 2")
 
 	// event loop
 	for {
+		println("accepting")
 		conn, err := l.Accept()
+		println("connected")
 		if err != nil {
 			fmt.Println("Error accepting: ", err.Error())
 			os.Exit(1)
@@ -108,6 +112,7 @@ func main() {
 
 // Handles incoming requests.
 func handleRequest(conn net.Conn, logicConn net.Conn, db gorm.DB) {
+	println("handling")
 
 	buf := make([]byte, 1024)
 
