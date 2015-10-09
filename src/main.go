@@ -136,9 +136,10 @@ func handleRequest(conn net.Conn, logicConn net.Conn, db gorm.DB) {
 	// go sendGameStateToServer(logicConn, db)
 
 	println("game state shit")
-	// get last game state
 
-	// TODO: (kirt) get last game state
+	// get the gamestate
+	lastgs := GameState{}
+	db.Last(&lastgs)
 
 	conn.Write([]byte("hello"))
 
